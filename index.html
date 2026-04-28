@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Split — Swim Deceleration Analyser</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;1,9..144,300&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0e0c;
+    --surface: #17191a;
+    --surface-2: #1f2223;
+    --line: #2a2d2e;
+    --line-bright: #3a3e3f;
+    --ink: #e8e6df;
+    --ink-dim: #8a8780;
+    --ink-faint: #52524c;
+    --accent: #d4ff4a;
+    --accent-warm: #ff9a3c;
+    --accent-cool: #5ac8e8;
+    --danger: #ff5a52;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); color: var(--ink); font-family: 'JetBrains Mono', monospace; min-height: 100vh; overflow-x: hidden; }
+
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.15;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .shell { position: relative; z-index: 1; max-width: 1400px; margin: 0 auto; padding: 32px 24px; }
+
+  header {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    padding-bottom: 24px; border-bottom: 1px solid var(--line);
+    margin-bottom: 32px;
+  }
+  .brand h1 {
+    font-family: 'Fraunces', serif; font-weight: 300; font-style: italic;
+    font-size: clamp(32px, 5vw, 56px); letter-spacing: -0.02em;
+    line-height: 0.95;
+  }
+  .brand h1 .dot { color: var(--accent); font-style: normal; }
+  .brand p {
+    font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase;
+    color: var(--ink-dim); margin-top: 8px;
+  }
+  .status { text-align: right; font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-faint); }
+  .status .blob { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-right: 6px; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  .stage { display: grid; grid-template-columns: 1fr 380px; gap: 24px; }
+  @media (max-width: 1000px) { .stage { grid-template-columns: 1fr; } }
+
+  .video-panel { background: var(--surface); border: 1px solid var(--line); position: relative; }
+  .video-frame { position: relative; aspect-ratio: 16/9; background: #000; overflow: hidden; }
+  .video-frame video { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .video-frame.empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; cursor: pointer; }
+  .video-frame.empty:hover { background: #0a0a0a; }
+  .video-frame.empty .icon { font-family: 'Fraunces', serif; font-size: 72px; font-style: italic; color: var(--ink-faint); line-height: 1; }
+  .video-frame.empty .label { font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-dim); }
+  .video-frame.empty .hint { font-size: 10px; color: var(--ink-faint); max-width: 280px; text-align: center; line-height: 1.6; }
+
+  .overlay { position: absolute; pointer-events: none; }
+  .overlay-tl { top: 16px; left: 16px; }
+  .overlay-tr { top: 16px; right: 16px; text-align: right; }
+  .overlay-br { bottom: 16px; right: 16px; text-align: right; }
+  .overlay-bl { bottom: 16px; left: 16px; right: 16px; }
+
+  .read-speed { font-family: 'Fraunces', serif; font-weight: 300; font-size: 64px; line-height: 1; color: var(--ink); letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
+  .read-speed .unit { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-dim); display: block; margin-top: 4px; }
+  .read-time { font-family: 'JetBrains Mono', monospace; font-size: 32px; font-weight: 300; color: var(--accent); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .read-time .label { display: block; font-size: 9px; letter-spacing: 0.2em; color: var(--ink-dim); margin-bottom: 4px; }
+  .read-distance { font-family: 'JetBrains Mono', monospace; font-size: 14px; color: var(--ink); letter-spacing: 0.05em; font-variant-numeric: tabular-nums; }
+  .read-distance .big { font-size: 22px; color: var(--accent); margin-right: 4px; }
+
+  .mini-chart { background: rgba(13,14,12,0.85); border: 1px solid var(--line-bright); padding: 10px 12px; backdrop-filter: blur(8px); }
+  .mini-chart svg { display: block; }
+
+  .controls { padding: 20px; border-top: 1px solid var(--line); }
+  .scrub-wrap { margin-bottom: 16px; }
+  .scrub { width: 100%; -webkit-appearance: none; appearance: none; height: 32px; background: transparent; cursor: pointer; }
+  .scrub::-webkit-slider-runnable-track { height: 4px; background: var(--line-bright); }
+  .scrub::-moz-range-track { height: 4px; background: var(--line-bright); }
+  .scrub::-webkit-slider-thumb { -webkit-appearance: none; width: 2px; height: 32px; background: var(--accent); margin-top: -14px; }
+  .scrub::-moz-range-thumb { width: 2px; height: 32px; background: var(--accent); border: none; border-radius: 0; }
+
+  .scrub-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--ink-faint); letter-spacing: 0.1em; font-variant-numeric: tabular-nums; }
+
+  .tape-wrap { position: relative; height: 24px; margin-top: 8px; background: var(--surface-2); }
+  .tape-mark { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent-cool); }
+  .tape-mark::after { content: attr(data-m); position: absolute; top: -14px; left: 50%; transform: translateX(-50%); font-size: 9px; color: var(--accent-cool); white-space: nowrap; }
+  .tape-mark.start { background: var(--accent); }
+  .tape-mark.start::after { color: var(--accent); content: 'START'; }
+
+  .playbar { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+  .play-btn { width: 44px; height: 44px; background: var(--accent); color: var(--bg); border: none; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 16px; display: flex; align-items: center; justify-content: center; }
+  .play-btn:hover { background: #c4f030; }
+  .play-btn:disabled { background: var(--line-bright); color: var(--ink-faint); cursor: not-allowed; }
+  .speed-btns { display: flex; gap: 1px; background: var(--line); }
+  .speed-btn { background: var(--surface-2); color: var(--ink-dim); border: none; padding: 8px 10px; font-family: 'JetBrains Mono', monospace; font-size: 10px; cursor: pointer; letter-spacing: 0.05em; }
+  .speed-btn.active { background: var(--ink); color: var(--bg); }
+  .frame-step { background: var(--surface-2); color: var(--ink); border: 1px solid var(--line-bright); padding: 8px 12px; font-family: 'JetBrains Mono', monospace; font-size: 10px; cursor: pointer; letter-spacing: 0.1em; }
+  .frame-step:hover { background: var(--line-bright); }
+
+  .side { display: flex; flex-direction: column; gap: 16px; }
+
+  .card { background: var(--surface); border: 1px solid var(--line); }
+  .card-hd { padding: 14px 18px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
+  .card-hd h3 { font-size: 10px; letter-spacing: 0.25em; text-transform: uppercase; color: var(--ink-dim); font-weight: 500; }
+  .card-hd .num { font-family: 'Fraunces', serif; font-style: italic; color: var(--accent); font-size: 18px; }
+  .card-body { padding: 16px 18px; }
+
+  .instruction { font-size: 12px; line-height: 1.7; color: var(--ink-dim); }
+  .instruction kbd { background: var(--surface-2); border: 1px solid var(--line-bright); padding: 1px 6px; font-size: 10px; color: var(--ink); border-radius: 2px; }
+  .instruction b { color: var(--ink); font-weight: 500; }
+
+  .mark-btn { width: 100%; background: var(--accent); color: var(--bg); border: none; padding: 14px; font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 12px; letter-spacing: 0.15em; text-transform: uppercase; cursor: pointer; transition: all 0.1s; }
+  .mark-btn:hover { background: #c4f030; transform: translateY(-1px); }
+  .mark-btn:disabled { background: var(--line-bright); color: var(--ink-faint); cursor: not-allowed; transform: none; }
+  .mark-btn.start { background: var(--accent-warm); color: var(--bg); }
+  .mark-btn.start:hover { background: #ff8820; }
+  .mark-btn .sub { display: block; font-weight: 300; font-size: 9px; letter-spacing: 0.1em; margin-top: 3px; opacity: 0.7; }
+
+  .split-grid { display: grid; grid-template-columns: 150px 1fr 90px 200px 120px 200px; gap: 0; font-size: 11px; }
+  .split-row { display: contents; }
+  .split-row > div { padding: 8px 10px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  .split-row:last-child > div { border-bottom: none; }
+  .split-row.head > div { background: var(--surface-2); color: var(--ink-faint); font-size: 9px; letter-spacing: 0.15em; text-transform: uppercase; }
+  .split-row .dist { color: var(--ink-dim); }
+  .split-row.done .dist { color: var(--ink); }
+  .split-row .bar-cell { position: relative; background: var(--surface-2); height: auto; display: flex; align-items: center; padding: 0; }
+  .split-row .bar { height: 60%; background: var(--accent); transition: width 0.3s; }
+  .split-row .bar.slow { background: var(--accent-warm); }
+  .split-row .bar.slower { background: var(--danger); }
+  .split-row .time, .split-row .speed { text-align: right; color: var(--ink); }
+  .split-row .speed { color: var(--accent); }
+  .split-row.done .speed { font-weight: 500; }
+
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .action { flex: 1; min-width: 0; background: var(--surface-2); color: var(--ink); border: 1px solid var(--line-bright); padding: 10px; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; transition: all 0.1s; }
+  .action:hover { background: var(--line-bright); border-color: var(--ink-dim); }
+  .action.danger:hover { border-color: var(--danger); color: var(--danger); }
+
+  .chart-big { padding: 20px; }
+  .chart-big svg { width: 100%; display: block; }
+  .chart-big .title { font-size: 10px; letter-spacing: 0.25em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 12px; }
+
+  .toast { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--accent); color: var(--ink); padding: 12px 20px; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; z-index: 100; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+
+  footer { margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; font-size: 10px; color: var(--ink-faint); letter-spacing: 0.1em; }
+  footer .foot-r span { color: var(--ink-dim); }
+
+  #fileInput { display: none; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <header>
+    <div class="brand">
+      <h1>split<span class="dot">.</span></h1>
+      <p>Swim Deceleration Analyser — v0.1</p>
+    </div>
+    <div class="status">
+      <div><span class="blob"></span>Ready</div>
+      <div id="statusLine" style="margin-top: 6px; color: var(--ink-dim);">Awaiting video</div>
+    </div>
+  </header>
+
+  <div class="stage">
+    <div class="video-panel">
+      <div class="video-frame empty" id="videoFrame">
+        <div class="icon">+</div>
+        <div class="label">Load Video</div>
+        <div class="hint">MP4 / MOV / WEBM. Nothing leaves your device. Side-on panning footage works best for this tool.</div>
+        <input type="file" id="fileInput" accept="video/*">
+      </div>
+
+      <div class="controls">
+        <div class="scrub-wrap">
+          <input type="range" class="scrub" id="scrub" min="0" max="1000" value="0" disabled>
+          <div class="tape-wrap" id="tapeWrap"></div>
+          <div class="scrub-labels" style="margin-top: 10px;">
+            <span id="timeCurrent">00:00.000</span>
+            <span id="timeDuration">00:00.000</span>
+          </div>
+        </div>
+        <div class="playbar">
+          <button class="play-btn" id="playBtn" disabled>▶</button>
+          <button class="frame-step" id="frameBack" disabled>◀ FRAME</button>
+          <button class="frame-step" id="frameFwd" disabled>FRAME ▶</button>
+          <div class="speed-btns">
+            <button class="speed-btn" data-rate="0.25">0.25×</button>
+            <button class="speed-btn" data-rate="0.5">0.5×</button>
+            <button class="speed-btn active" data-rate="1">1×</button>
+            <button class="speed-btn" data-rate="2">2×</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="card">
+        <div class="card-hd"><h3>How to use</h3><span class="num">01</span></div>
+        <div class="card-body">
+          <div class="instruction">
+            <b>1.</b> Load a video. Choose length + start mode.<br>
+            <b>2.</b> Scrub to the start frame, tap <b>MARK START</b>.<br>
+            <b>3.</b> Scrub to each checkpoint as the <b>head crosses</b> it (15m flag, T-mark, 35m flag, wall), tap <b>MARK</b>.<br>
+            <b>4.</b> <b>Optional:</b> Play the clip through (slow if needed) and tap <b>S</b> each time an arm enters the water. SR, DPS, and Stroke Index compute automatically per segment.<br><br>
+            <span style="color: var(--ink-faint);">Shortcuts: <kbd>M</kbd> mark · <kbd>S</kbd> stroke · <kbd>Space</kbd> play · <kbd>←</kbd> <kbd>→</kbd> frame · <kbd>Z</kbd> undo mark · <kbd>X</kbd> undo stroke</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd"><h3>Length</h3><span class="num">02</span></div>
+        <div class="card-body">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px;">
+            <button class="speed-btn length-btn" data-len="25" style="padding: 10px;">25m · 15, 25</button>
+            <button class="speed-btn length-btn active" data-len="50" style="padding: 10px;">50m · 15, 25, 35, 50</button>
+            <button class="speed-btn length-btn" data-len="35" style="padding: 10px;">35m · 15, 25, 35</button>
+            <button class="speed-btn length-btn" data-len="custom" style="padding: 10px;">Custom…</button>
+          </div>
+          <div id="customConfig" style="display: none; margin-top: 10px; padding: 12px; background: var(--surface-2); border: 1px solid var(--line);">
+            <div style="font-size: 9px; color: var(--ink-dim); letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 8px;">Custom distance + checkpoints</div>
+            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
+              <label style="font-size: 11px; color: var(--ink-dim); min-width: 70px;">Total m:</label>
+              <input type="number" id="customLen" value="35" min="5" max="200" step="1" style="flex:1; background: var(--bg); border: 1px solid var(--line-bright); color: var(--ink); padding: 6px 8px; font-family: 'JetBrains Mono', monospace; font-size: 12px;">
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
+              <label style="font-size: 11px; color: var(--ink-dim); min-width: 70px;">Marks:</label>
+              <input type="text" id="customMarks" value="15, 25, 35" placeholder="e.g. 10, 20, 30, 35" style="flex:1; background: var(--bg); border: 1px solid var(--line-bright); color: var(--ink); padding: 6px 8px; font-family: 'JetBrains Mono', monospace; font-size: 12px;">
+            </div>
+            <button id="customApply" class="action" style="width: 100%; background: var(--accent); color: var(--bg); border: none;">Apply</button>
+            <div style="font-size: 9px; color: var(--ink-faint); margin-top: 8px; line-height: 1.4;">Comma-separated checkpoint distances (must be ≤ total). Final mark should equal total distance.</div>
+          </div>
+          <div style="display: flex; gap: 8px; margin-top: 12px;">
+            <button class="speed-btn start-mode-btn active" data-mode="beep" style="flex:1; padding: 10px;">Start = beep</button>
+            <button class="speed-btn start-mode-btn" data-mode="feet" style="flex:1; padding: 10px;">Start = feet off</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd"><h3>Mark</h3><span class="num">03</span></div>
+        <div class="card-body">
+          <button class="mark-btn start" id="markBtn" disabled>
+            MARK START
+            <span class="sub">Feet leave the wall</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd"><h3>Strokes</h3><span class="num">04</span></div>
+        <div class="card-body">
+          <button class="mark-btn stroke-btn" id="strokeBtn" disabled style="background: var(--accent-cool);">
+            LOG STROKE
+            <span class="sub">Each arm entry · shortcut: S</span>
+          </button>
+          <div style="display: flex; gap: 6px; margin-top: 10px;">
+            <button class="action" id="undoStrokeBtn" style="flex:1;">Undo stroke</button>
+            <button class="action" id="clearStrokesBtn" style="flex:1;">Clear all</button>
+          </div>
+          <div id="strokeCount" style="font-size: 10px; color: var(--ink-faint); letter-spacing: 0.1em; text-transform: uppercase; margin-top: 10px; text-align: center;">0 strokes logged</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd"><h3>Actions</h3><span class="num">05</span></div>
+        <div class="card-body">
+          <div class="actions">
+            <button class="action" id="undoBtn">Undo last</button>
+            <button class="action danger" id="resetBtn">Reset</button>
+            <button class="action" id="exportBtn">Export CSV</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top: 24px;">
+    <div class="card-hd"><h3>Splits</h3><span class="num">06</span></div>
+    <div class="card-body" style="padding: 0;">
+      <div class="split-grid" id="splitGrid"></div>
+    </div>
+  </div>
+
+  <div class="card chart-big" style="margin-top: 24px;">
+    <div class="title">Speed curve — where technique breaks. Segment speed m/s by checkpoint.</div>
+    <svg id="chart" viewBox="0 0 800 240" preserveAspectRatio="none"></svg>
+  </div>
+
+  <footer>
+    <div>split · technique analysis instrument</div>
+    <div class="foot-r">
+      Private <span>·</span> In-browser <span>·</span> No upload
+    </div>
+  </footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  const CHECKPOINTS_50 = [15, 25, 35, 50];
+  const CHECKPOINTS_35 = [15, 25, 35];
+  const CHECKPOINTS_25 = [15, 25];
+
+  const state = {
+    videoURL: null,
+    duration: 0,
+    startTime: null,      // seconds, at starter beep OR feet leaving block
+    startMode: 'beep',    // 'beep' or 'feet'
+    splits: [],           // { distance, videoTime } — 0 is start, then 15/25/35/50
+    strokes: [],          // array of videoTime values, one per arm entry
+    lengthM: 50,
+    checkpoints: CHECKPOINTS_50,
+    playing: false,
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const fileInput = $('fileInput');
+  const videoFrame = $('videoFrame');
+  const playBtn = $('playBtn');
+  const scrub = $('scrub');
+  const markBtn = $('markBtn');
+  const undoBtn = $('undoBtn');
+  const resetBtn = $('resetBtn');
+  const exportBtn = $('exportBtn');
+  const timeCurrent = $('timeCurrent');
+  const timeDuration = $('timeDuration');
+  const statusLine = $('statusLine');
+  const splitGrid = $('splitGrid');
+  const chart = $('chart');
+  const tapeWrap = $('tapeWrap');
+  const frameBack = $('frameBack');
+  const frameFwd = $('frameFwd');
+  const toast = $('toast');
+
+  let video = null;
+
+  // ---- formatters ----
+  const fmtTime = (s) => {
+    if (!isFinite(s) || s < 0) s = 0;
+    const m = Math.floor(s / 60);
+    const r = s - m * 60;
+    return `${String(m).padStart(2,'0')}:${r.toFixed(3).padStart(6,'0')}`;
+  };
+  const fmtSpeed = (v) => v.toFixed(2);
+  const fmtPace = (v) => {
+    if (v <= 0) return '—';
+    const sec100 = 100 / v;
+    return fmtTime(sec100);
+  };
+
+  const showToast = (msg) => {
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => toast.classList.remove('show'), 2000);
+  };
+
+  // ---- video load ----
+  videoFrame.addEventListener('click', (e) => {
+    if (videoFrame.classList.contains('empty')) fileInput.click();
+  });
+  fileInput.addEventListener('change', (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    loadVideo(URL.createObjectURL(f));
+  });
+
+  // drag/drop
+  ['dragover','dragenter'].forEach(ev => videoFrame.addEventListener(ev, e => { e.preventDefault(); }));
+  videoFrame.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const f = e.dataTransfer.files[0];
+    if (f && f.type.startsWith('video/')) loadVideo(URL.createObjectURL(f));
+  });
+
+  function loadVideo(url) {
+    state.videoURL = url;
+    videoFrame.classList.remove('empty');
+    videoFrame.innerHTML = `
+      <video id="vid" playsinline preload="metadata"></video>
+      <div class="overlay overlay-tl">
+        <div class="read-speed" id="ovSpeed">—<span class="unit">m/s instantaneous</span></div>
+      </div>
+      <div class="overlay overlay-tr">
+        <div class="read-time"><span class="label">Race time</span><span id="ovRace">00:00.000</span></div>
+      </div>
+      <div class="overlay overlay-bl mini-chart" id="ovChartBox" style="max-width: 45%; display:none;">
+        <svg id="ovChart" viewBox="0 0 200 60" preserveAspectRatio="none" style="width:100%; height:60px;"></svg>
+      </div>
+      <div class="overlay overlay-br">
+        <div class="read-distance"><span class="big" id="ovDist">0</span><span>m / <span id="ovTotal">25</span>m</span></div>
+      </div>
+    `;
+    video = document.getElementById('vid');
+    video.src = url;
+    video.addEventListener('loadedmetadata', () => {
+      state.duration = video.duration;
+      timeDuration.textContent = fmtTime(video.duration);
+      scrub.disabled = false;
+      playBtn.disabled = false;
+      markBtn.disabled = false;
+      strokeBtn.disabled = false;
+      frameBack.disabled = false;
+      frameFwd.disabled = false;
+      statusLine.textContent = 'Video loaded — mark start';
+      document.getElementById('ovTotal').textContent = state.lengthM;
+      render();
+    });
+    video.addEventListener('timeupdate', onTimeUpdate);
+    video.addEventListener('play', () => { state.playing = true; playBtn.textContent = '❚❚'; });
+    video.addEventListener('pause', () => { state.playing = false; playBtn.textContent = '▶'; });
+    video.addEventListener('ended', () => { state.playing = false; playBtn.textContent = '▶'; });
+  }
+
+  function onTimeUpdate() {
+    if (!video) return;
+    const t = video.currentTime;
+    timeCurrent.textContent = fmtTime(t);
+    scrub.value = (t / state.duration) * 1000;
+    updateOverlay(t);
+  }
+
+  // ---- scrubbing ----
+  scrub.addEventListener('input', () => {
+    if (!video) return;
+    const t = (scrub.value / 1000) * state.duration;
+    video.currentTime = t;
+    timeCurrent.textContent = fmtTime(t);
+    updateOverlay(t);
+  });
+
+  playBtn.addEventListener('click', () => {
+    if (!video) return;
+    if (video.paused) video.play(); else video.pause();
+  });
+
+  // speed buttons
+  document.querySelectorAll('.speed-btn[data-rate]').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.speed-btn[data-rate]').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      if (video) video.playbackRate = parseFloat(b.dataset.rate);
+    });
+  });
+
+  document.querySelectorAll('.length-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.length-btn').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      const customCfg = document.getElementById('customConfig');
+      if (b.dataset.len === 'custom') {
+        customCfg.style.display = 'block';
+        // don't apply any change yet — wait for Apply button
+        return;
+      }
+      customCfg.style.display = 'none';
+      state.lengthM = parseInt(b.dataset.len);
+      if (state.lengthM === 50) state.checkpoints = CHECKPOINTS_50;
+      else if (state.lengthM === 35) state.checkpoints = CHECKPOINTS_35;
+      else if (state.lengthM === 25) state.checkpoints = CHECKPOINTS_25;
+      // Trim any splits beyond the new length
+      state.splits = state.splits.filter(s => s.distance <= state.lengthM);
+      const ot = document.getElementById('ovTotal'); if (ot) ot.textContent = state.lengthM;
+      render();
+    });
+  });
+
+  document.getElementById('customApply').addEventListener('click', () => {
+    const lenInput = document.getElementById('customLen');
+    const marksInput = document.getElementById('customMarks');
+    const len = parseInt(lenInput.value);
+    if (!len || len < 5 || len > 200) { showToast('Distance must be 5–200m'); return; }
+    const marks = marksInput.value.split(',').map(s => parseFloat(s.trim())).filter(n => !isNaN(n) && n > 0);
+    if (marks.length === 0) { showToast('Need at least one checkpoint'); return; }
+    if (marks.some(m => m > len)) { showToast('Checkpoints can\'t exceed total distance'); return; }
+    // sort + dedupe
+    const sorted = [...new Set(marks)].sort((a,b) => a - b);
+    state.lengthM = len;
+    state.checkpoints = sorted;
+    state.splits = state.splits.filter(s => s.distance === 0 || sorted.includes(s.distance));
+    const ot = document.getElementById('ovTotal'); if (ot) ot.textContent = state.lengthM;
+    showToast(`Custom: ${len}m · ${sorted.join(', ')}`);
+    render();
+  });
+
+  document.querySelectorAll('.start-mode-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.start-mode-btn').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      state.startMode = b.dataset.mode;
+      render();
+    });
+  });
+
+  // frame step (~1/30s)
+  const FRAME = 1/30;
+  frameBack.addEventListener('click', () => { if (video) { video.pause(); video.currentTime = Math.max(0, video.currentTime - FRAME); } });
+  frameFwd.addEventListener('click', () => { if (video) { video.pause(); video.currentTime = Math.min(state.duration, video.currentTime + FRAME); } });
+
+  // ---- mark logic ----
+  markBtn.addEventListener('click', doMark);
+
+  // ---- stroke logic ----
+  const strokeBtn = $('strokeBtn');
+  const undoStrokeBtn = $('undoStrokeBtn');
+  const clearStrokesBtn = $('clearStrokesBtn');
+  const strokeCount = $('strokeCount');
+
+  strokeBtn.addEventListener('click', logStroke);
+  undoStrokeBtn.addEventListener('click', () => {
+    if (state.strokes.length === 0) return;
+    state.strokes.pop();
+    render();
+  });
+  clearStrokesBtn.addEventListener('click', () => {
+    if (state.strokes.length === 0) return;
+    if (!confirm(`Clear all ${state.strokes.length} logged strokes?`)) return;
+    state.strokes = [];
+    render();
+  });
+
+  function logStroke() {
+    if (!video) return;
+    const t = video.currentTime;
+    // prevent duplicate logs within 0.1s (rapid double-tap)
+    if (state.strokes.length > 0 && Math.abs(t - state.strokes[state.strokes.length-1]) < 0.1) {
+      showToast('Too close to last stroke');
+      return;
+    }
+    state.strokes.push(t);
+    state.strokes.sort((a,b) => a - b);
+    render();
+  }
+
+  function doMark() {
+    if (!video) return;
+    const t = video.currentTime;
+    if (state.startTime === null) {
+      state.startTime = t;
+      state.splits = [{ distance: 0, videoTime: t }];
+      showToast(state.startMode === 'beep' ? 'Beep locked' : 'Feet-off locked');
+    } else {
+      const doneCount = state.splits.length - 1;  // excluding start
+      if (doneCount >= state.checkpoints.length) { showToast('All checkpoints captured'); return; }
+      const nextDist = state.checkpoints[doneCount];
+      if (t <= state.splits[state.splits.length-1].videoTime) {
+        showToast('Must be after previous mark');
+        return;
+      }
+      state.splits.push({ distance: nextDist, videoTime: t });
+      showToast(`${nextDist}m locked`);
+    }
+    render();
+  }
+
+  undoBtn.addEventListener('click', () => {
+    if (state.splits.length === 0) return;
+    state.splits.pop();
+    if (state.splits.length === 0) state.startTime = null;
+    render();
+  });
+
+  resetBtn.addEventListener('click', () => {
+    if (!confirm('Clear all splits and strokes for this clip?')) return;
+    state.splits = [];
+    state.startTime = null;
+    state.strokes = [];
+    render();
+  });
+
+  exportBtn.addEventListener('click', () => {
+    if (state.splits.length < 2) { showToast('No splits to export'); return; }
+    const segs = computeSegments();
+    const rows = [['checkpoint_m','video_time_s','race_time_s','segment_from_m','segment_to_m','segment_distance_m','segment_duration_s','segment_speed_mps','segment_pace_per_100m','strokes','cycles','stroke_rate_cpm','dps_m_per_cycle','stroke_index']];
+    // start row
+    rows.push([state.splits[0].distance, state.splits[0].videoTime.toFixed(3), '0.000', '','','','','','','','','','','']);
+    segs.forEach((seg, i) => {
+      const s = state.splits[i+1];
+      rows.push([
+        s.distance,
+        s.videoTime.toFixed(3),
+        (s.videoTime - state.startTime).toFixed(3),
+        seg.from,
+        seg.to,
+        seg.distance,
+        seg.dt.toFixed(3),
+        seg.speed.toFixed(3),
+        (100/seg.speed).toFixed(3),
+        seg.strokes,
+        seg.cycles.toFixed(1),
+        seg.cycles > 0 ? seg.strokeRate.toFixed(2) : '',
+        seg.cycles > 0 ? seg.dps.toFixed(3) : '',
+        seg.cycles > 0 ? seg.strokeIndex.toFixed(3) : '',
+      ]);
+    });
+    const csv = rows.map(r => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `splits_${Date.now()}.csv`; a.click();
+    URL.revokeObjectURL(url);
+    showToast('CSV exported');
+  });
+
+  // keyboard
+  document.addEventListener('keydown', (e) => {
+    if (!video) return;
+    if (e.target.tagName === 'INPUT') return;
+    if (e.code === 'Space') { e.preventDefault(); playBtn.click(); }
+    else if (e.code === 'ArrowLeft') { e.preventDefault(); frameBack.click(); }
+    else if (e.code === 'ArrowRight') { e.preventDefault(); frameFwd.click(); }
+    else if (e.key.toLowerCase() === 'm') { e.preventDefault(); doMark(); }
+    else if (e.key.toLowerCase() === 's') { e.preventDefault(); logStroke(); }
+    else if (e.key.toLowerCase() === 'z') { e.preventDefault(); undoBtn.click(); }
+    else if (e.key.toLowerCase() === 'x') { e.preventDefault(); undoStrokeBtn.click(); }
+  });
+
+  // ---- speed logic ----
+  function computeSegments() {
+    const segs = [];
+    for (let i=1; i<state.splits.length; i++) {
+      const prev = state.splits[i-1];
+      const cur = state.splits[i];
+      const dt = cur.videoTime - prev.videoTime;
+      const dd = cur.distance - prev.distance;
+      const v = dt > 0 ? dd / dt : 0;
+
+      // strokes within this segment (inclusive of start, exclusive of end — first segment may have zero strokes in underwater)
+      const segStrokes = state.strokes.filter(s => s >= prev.videoTime && s < cur.videoTime);
+      const strokeCount = segStrokes.length;
+      const cycles = strokeCount / 2;       // freestyle: 2 arm entries = 1 cycle
+      const strokeRate = dt > 0 ? (cycles / dt) * 60 : 0;  // cycles per minute
+      const dps = cycles > 0 ? dd / cycles : 0;             // metres per cycle
+      const strokeIndex = v * dps;                           // speed × DPS
+
+      segs.push({
+        from: prev.distance,
+        to: cur.distance,
+        distance: dd,
+        speed: v,
+        dt: dt,
+        raceTime: cur.videoTime - state.startTime,
+        strokes: strokeCount,
+        cycles: cycles,
+        strokeRate: strokeRate,
+        dps: dps,
+        strokeIndex: strokeIndex,
+      });
+    }
+    return segs;
+  }
+
+  // Current "live" speed for overlay — interpolated / held based on current video time
+  function liveSpeed(t) {
+    if (state.splits.length < 2) return null;
+    if (state.startTime === null || t < state.startTime) return null;
+    for (let i=1; i<state.splits.length; i++) {
+      if (t <= state.splits[i].videoTime) {
+        const dt = state.splits[i].videoTime - state.splits[i-1].videoTime;
+        const dd = state.splits[i].distance - state.splits[i-1].distance;
+        return dt > 0 ? dd/dt : 0;
+      }
+    }
+    const last = state.splits.length - 1;
+    const dt = state.splits[last].videoTime - state.splits[last-1].videoTime;
+    const dd = state.splits[last].distance - state.splits[last-1].distance;
+    return dt > 0 ? dd/dt : 0;
+  }
+
+  function liveDistance(t) {
+    if (state.startTime === null || t < state.startTime) return 0;
+    if (state.splits.length < 2) return 0;
+    for (let i=1; i<state.splits.length; i++) {
+      if (t <= state.splits[i].videoTime) {
+        const prev = state.splits[i-1];
+        const cur = state.splits[i];
+        const frac = (t - prev.videoTime) / (cur.videoTime - prev.videoTime);
+        return prev.distance + frac * (cur.distance - prev.distance);
+      }
+    }
+    return state.splits[state.splits.length-1].distance;
+  }
+
+  function updateOverlay(t) {
+    if (!video) return;
+    const ovSpeed = document.getElementById('ovSpeed');
+    const ovRace = document.getElementById('ovRace');
+    const ovDist = document.getElementById('ovDist');
+    const ovChartBox = document.getElementById('ovChartBox');
+    if (!ovSpeed) return;
+
+    const v = liveSpeed(t);
+    const d = liveDistance(t);
+    const rt = state.startTime !== null ? Math.max(0, t - state.startTime) : 0;
+
+    ovSpeed.innerHTML = (v === null ? '—' : fmtSpeed(v)) + '<span class="unit">m/s segment</span>';
+    ovRace.textContent = fmtTime(rt);
+    ovDist.textContent = d.toFixed(1);
+
+    if (state.splits.length >= 3) {
+      ovChartBox.style.display = 'block';
+      drawMiniChart(d);
+    } else {
+      ovChartBox.style.display = 'none';
+    }
+  }
+
+  function drawMiniChart(currentDist) {
+    const segs = computeSegments();
+    if (segs.length === 0) return;
+    const svg = document.getElementById('ovChart');
+    const W = 200, H = 60, P = 4;
+    const maxV = Math.max(...segs.map(s=>s.speed), 2.5);
+    const minV = Math.min(...segs.map(s=>s.speed), 0.5);
+    const scaleX = (m) => P + (m / state.lengthM) * (W - 2*P);
+    const scaleY = (v) => H - P - ((v - minV) / (maxV - minV || 1)) * (H - 2*P);
+
+    let path = '';
+    segs.forEach((s, i) => {
+      const x = scaleX((s.from + s.to)/2);
+      const y = scaleY(s.speed);
+      path += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
+    });
+
+    const cursorX = scaleX(currentDist);
+
+    svg.innerHTML = `
+      <line x1="${P}" y1="${H-P}" x2="${W-P}" y2="${H-P}" stroke="var(--line-bright)" stroke-width="1"/>
+      <path d="${path}" fill="none" stroke="var(--accent)" stroke-width="1.5"/>
+      ${segs.map(s => {
+        const x = scaleX((s.from+s.to)/2);
+        const y = scaleY(s.speed);
+        return `<circle cx="${x}" cy="${y}" r="2" fill="var(--accent)"/>`;
+      }).join('')}
+      <line x1="${cursorX}" y1="${P}" x2="${cursorX}" y2="${H-P}" stroke="var(--accent-warm)" stroke-width="1" stroke-dasharray="2,2"/>
+    `;
+  }
+
+  // ---- render full panel ----
+  function render() {
+    // mark button
+    if (state.startTime === null) {
+      markBtn.classList.add('start');
+      const sub = state.startMode === 'beep' ? 'First flash / sound of starter' : 'Toes leave the block';
+      markBtn.innerHTML = `MARK START<span class="sub">${sub}</span>`;
+      markBtn.disabled = !video;
+    } else {
+      markBtn.classList.remove('start');
+      const doneCount = state.splits.length - 1;
+      if (doneCount >= state.checkpoints.length) {
+        markBtn.innerHTML = 'ALL CHECKPOINTS DONE<span class="sub">Use Undo to revise</span>';
+        markBtn.disabled = true;
+      } else {
+        const nextDist = state.checkpoints[doneCount];
+        let hint;
+        const isFinal = nextDist === state.lengthM;
+        if (nextDist === 15) hint = 'Head breaks 15m flag line';
+        else if (nextDist === 25 && state.lengthM === 50) hint = 'Head crosses T-mark (25m)';
+        else if (nextDist === 35 && state.lengthM === 50) hint = 'Head crosses 15m flags from far wall';
+        else if (isFinal) hint = 'Head touches the wall';
+        else hint = `Head crosses ${nextDist}m`;
+        markBtn.innerHTML = `MARK ${nextDist}m<span class="sub">${hint}</span>`;
+        markBtn.disabled = !video;
+      }
+    }
+
+    // status line
+    if (video && state.startTime !== null) {
+      const done = state.splits.length - 1;
+      const total = state.checkpoints.length;
+      statusLine.textContent = `${done}/${total} checkpoints marked`;
+    } else if (video) {
+      statusLine.textContent = `Mark start (${state.startMode === 'beep' ? 'beep' : 'feet-off'})`;
+    }
+
+    // split table
+    const segs = computeSegments();
+    const rows = [];
+    rows.push(`<div class="split-row head">
+      <div>Segment</div>
+      <div>Speed bar</div>
+      <div>Speed</div>
+      <div>SR · DPS · SI</div>
+      <div>Time</div>
+      <div>Diagnostic</div>
+    </div>`);
+    const allSpeeds = segs.map(s=>s.speed);
+    const peakSpeed = allSpeeds.length ? Math.max(...allSpeeds) : 0;
+
+    // Find the best surface-swimming segment (exclude dive segment starting at 0) as reference for SR/DPS comparisons
+    const surfaceSegs = segs.filter(s => s.from > 0);
+    const hasStrokeData = segs.some(s => s.cycles > 0);
+    const refSR = surfaceSegs.length ? Math.max(...surfaceSegs.filter(s=>s.cycles>0).map(s=>s.strokeRate), 0) : 0;
+    const refDPS = surfaceSegs.length ? Math.max(...surfaceSegs.filter(s=>s.cycles>0).map(s=>s.dps), 0) : 0;
+
+    const segLabel = (from, to) => {
+      // 50m race
+      if (state.lengthM === 50) {
+        if (from === 0 && to === 15) return 'Dive + underwater + breakout';
+        if (from === 15 && to === 25) return 'Peak surface speed';
+        if (from === 25 && to === 35) return 'Mid-race sustain';
+        if (from === 35 && to === 50) return 'Back-end hold';
+      }
+      // 35m max-effort
+      if (state.lengthM === 35) {
+        if (from === 0 && to === 15) return 'Dive + underwater + breakout';
+        if (from === 15 && to === 25) return 'Peak surface speed';
+        if (from === 25 && to === 35) return 'Sprint sustain (no fade legal)';
+      }
+      // 25m
+      if (state.lengthM === 25) {
+        if (from === 0 && to === 15) return 'Dive + underwater + breakout';
+        if (from === 15 && to === 25) return 'Finish surface';
+      }
+      // Custom — generic labels
+      return `${from}–${to}m`;
+    };
+
+    const segDiagnostic = (seg, prevSurface) => {
+      if (seg.from === 0) return 'Dive phase — compare across sessions';
+      if (!seg.cycles) return 'Log strokes for diagnosis';
+      if (!prevSurface || !prevSurface.cycles) return '—';
+      const srDrop = (prevSurface.strokeRate - seg.strokeRate) / prevSurface.strokeRate;
+      const dpsDrop = (prevSurface.dps - seg.dps) / prevSurface.dps;
+      const speedDrop = (prevSurface.speed - seg.speed) / prevSurface.speed;
+      if (speedDrop < 0.02) return 'Speed held';
+      const srFell = srDrop > 0.04;
+      const dpsFell = dpsDrop > 0.04;
+      if (srFell && dpsFell) return `Both collapsed (SR −${(srDrop*100).toFixed(0)}%, DPS −${(dpsDrop*100).toFixed(0)}%)`;
+      if (dpsFell) return `DPS fell −${(dpsDrop*100).toFixed(0)}% — catch/technique`;
+      if (srFell) return `SR fell −${(srDrop*100).toFixed(0)}% — aerobic/fitness`;
+      return `Minor drop — ${(speedDrop*100).toFixed(0)}% slower`;
+    };
+
+    // Start row
+    const startSplit = state.splits.find(s => s.distance === 0);
+    const startLabel = state.startMode === 'beep' ? 'START (beep)' : 'START (feet)';
+    rows.push(`<div class="split-row ${startSplit?'done':''}">
+      <div class="dist">${startLabel}</div>
+      <div class="bar-cell"></div>
+      <div class="time">—</div>
+      <div class="time" style="color: var(--ink-faint);">—</div>
+      <div class="speed" style="color: var(--ink-dim);">${startSplit ? '00:00.000' : 'awaiting'}</div>
+      <div class="time" style="color: var(--ink-faint);">—</div>
+    </div>`);
+
+    // Checkpoint rows
+    let prevSurface = null;
+    state.checkpoints.forEach((d, idx) => {
+      const split = state.splits.find(s => s.distance === d);
+      const seg = segs.find(s => s.to === d);
+      const done = !!split;
+      let barW = 0, barClass = '';
+      if (seg && peakSpeed > 0) {
+        barW = (seg.speed / peakSpeed) * 100;
+        const pct = seg.speed / peakSpeed;
+        if (pct < 0.70) barClass = 'slower';
+        else if (pct < 0.85) barClass = 'slow';
+      }
+
+      const from = idx === 0 ? 0 : state.checkpoints[idx-1];
+      const label = segLabel(from, d);
+      const diag = seg ? segDiagnostic(seg, prevSurface) : '—';
+
+      let speedCell = '—';
+      let strokeCell = '—';
+      let timeCell = '—';
+      if (seg) {
+        speedCell = `${fmtSpeed(seg.speed)} m/s`;
+        if (seg.cycles > 0) {
+          strokeCell = `<span style="color:var(--accent-cool);">${seg.strokeRate.toFixed(0)}</span> spm · <span style="color:var(--accent);">${seg.dps.toFixed(2)}</span>m · SI ${seg.strokeIndex.toFixed(2)}<br><span style="font-size:9px; color:var(--ink-faint);">${seg.strokes} strokes / ${seg.cycles.toFixed(1)} cyc</span>`;
+        } else {
+          strokeCell = '<span style="color:var(--ink-faint); font-size:10px;">no strokes logged</span>';
+        }
+        timeCell = `<span style="color: var(--accent);">${fmtTime(split.videoTime - state.startTime).replace(/^00:/,'')}</span><br><span style="font-size:9px; color:var(--ink-faint);">${seg.dt.toFixed(2)}s seg</span>`;
+      }
+
+      rows.push(`<div class="split-row ${done?'done':''}">
+        <div class="dist"><b style="color: var(--ink);">${d}m</b><br><span style="font-size:9px; color: var(--ink-faint); letter-spacing: 0.05em;">${label}</span></div>
+        <div class="bar-cell">${seg ? `<div class="bar ${barClass}" style="width:${barW}%"></div>` : ''}</div>
+        <div class="time">${speedCell}</div>
+        <div class="time" style="font-size:11px;">${strokeCell}</div>
+        <div class="speed">${timeCell}</div>
+        <div class="time" style="font-size:10px; color: var(--ink-dim);">${diag}</div>
+      </div>`);
+
+      if (seg && seg.from > 0) prevSurface = seg;
+    });
+
+    splitGrid.innerHTML = rows.join('');
+
+    // tape marks
+    tapeWrap.innerHTML = '';
+    if (state.duration > 0) {
+      // Stroke ticks (thin, cool-coloured, drawn first so they sit under split marks)
+      state.strokes.forEach((t) => {
+        const el = document.createElement('div');
+        el.style.cssText = `position:absolute; top:30%; bottom:30%; width:1px; background:var(--accent-cool); opacity:0.5; left:${(t / state.duration) * 100}%;`;
+        tapeWrap.appendChild(el);
+      });
+      // Split marks
+      state.splits.forEach((s) => {
+        const el = document.createElement('div');
+        el.className = 'tape-mark' + (s.distance === 0 ? ' start' : '');
+        el.style.left = `${(s.videoTime / state.duration) * 100}%`;
+        if (s.distance !== 0) el.dataset.m = s.distance + 'm';
+        tapeWrap.appendChild(el);
+      });
+    }
+
+    // Stroke counter
+    if (strokeCount) {
+      const n = state.strokes.length;
+      strokeCount.textContent = n === 0 ? '0 strokes logged' : `${n} strokes logged · ${(n/2).toFixed(1)} cycles`;
+    }
+
+    // main chart
+    drawMainChart(segs);
+
+    // update overlay to match current time
+    if (video) updateOverlay(video.currentTime);
+  }
+
+  function drawMainChart(segs) {
+    const W = 800, H = 240;
+    const PAD = { l: 60, r: 30, t: 24, b: 48 };
+    const innerW = W - PAD.l - PAD.r;
+    const innerH = H - PAD.t - PAD.b;
+
+    if (segs.length === 0) {
+      chart.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="var(--ink-faint)" font-family="JetBrains Mono" font-size="11" letter-spacing="2">AWAITING DATA</text>`;
+      return;
+    }
+
+    const maxV = Math.max(...segs.map(s=>s.speed)) * 1.1;
+    const minV = 0;
+
+    const sx = (m) => PAD.l + (m / state.lengthM) * innerW;
+    const sy = (v) => PAD.t + innerH - ((v - minV) / (maxV - minV)) * innerH;
+
+    // grid
+    let grid = '';
+    const xTicks = [0, ...state.checkpoints];
+    xTicks.forEach(d => {
+      grid += `<line x1="${sx(d)}" y1="${PAD.t}" x2="${sx(d)}" y2="${PAD.t+innerH}" stroke="var(--line)" stroke-width="1"/>`;
+      grid += `<text x="${sx(d)}" y="${H-PAD.b+16}" text-anchor="middle" fill="var(--ink-faint)" font-family="JetBrains Mono" font-size="9" letter-spacing="1">${d}m</text>`;
+    });
+    // y gridlines
+    const ySteps = 4;
+    for (let i=0; i<=ySteps; i++) {
+      const v = minV + (i / ySteps) * (maxV - minV);
+      const y = sy(v);
+      grid += `<line x1="${PAD.l}" y1="${y}" x2="${W-PAD.r}" y2="${y}" stroke="var(--line)" stroke-width="1"/>`;
+      grid += `<text x="${PAD.l-8}" y="${y+3}" text-anchor="end" fill="var(--ink-faint)" font-family="JetBrains Mono" font-size="9">${v.toFixed(1)}</text>`;
+    }
+    grid += `<text x="${PAD.l-45}" y="${PAD.t+innerH/2}" text-anchor="middle" fill="var(--ink-dim)" font-family="JetBrains Mono" font-size="9" letter-spacing="2" transform="rotate(-90 ${PAD.l-45} ${PAD.t+innerH/2})">m/s</text>`;
+
+    // area + line
+    const peakV = Math.max(...segs.map(s=>s.speed));
+    let linePath = '', areaPath = '';
+    segs.forEach((s, i) => {
+      const xMid = sx((s.from + s.to)/2);
+      const y = sy(s.speed);
+      linePath += (i === 0 ? 'M' : 'L') + xMid + ' ' + y + ' ';
+      if (i === 0) areaPath += `M ${xMid} ${sy(0)} L ${xMid} ${y} `;
+      else areaPath += `L ${xMid} ${y} `;
+    });
+    const lastX = sx((segs[segs.length-1].from + segs[segs.length-1].to)/2);
+    areaPath += `L ${lastX} ${sy(0)} Z`;
+
+    // segment bars (drop indicators)
+    let bars = '';
+    segs.forEach((s) => {
+      const x1 = sx(s.from), x2 = sx(s.to);
+      const y = sy(s.speed);
+      const dropPct = s.speed / peakV;
+      let color = 'var(--accent)';
+      if (dropPct < 0.80) color = 'var(--danger)';
+      else if (dropPct < 0.92) color = 'var(--accent-warm)';
+      bars += `<rect x="${x1}" y="${y}" width="${x2-x1}" height="${sy(0)-y}" fill="${color}" opacity="0.12"/>`;
+      bars += `<rect x="${x1}" y="${y}" width="${x2-x1}" height="2" fill="${color}"/>`;
+      bars += `<text x="${(x1+x2)/2}" y="${y-6}" text-anchor="middle" fill="${color}" font-family="JetBrains Mono" font-size="10" font-weight="500">${s.speed.toFixed(2)}</text>`;
+    });
+
+    // peak marker
+    const peakSeg = segs.find(s => s.speed === peakV);
+    let peakMark = '';
+    if (peakSeg) {
+      const px = sx((peakSeg.from + peakSeg.to)/2);
+      peakMark = `<line x1="${px}" y1="${PAD.t}" x2="${px}" y2="${sy(peakV)}" stroke="var(--accent)" stroke-width="1" stroke-dasharray="2,3"/>
+        <text x="${px}" y="${PAD.t-6}" text-anchor="middle" fill="var(--accent)" font-family="JetBrains Mono" font-size="9" letter-spacing="1">PEAK</text>`;
+    }
+
+    chart.innerHTML = grid + bars + peakMark +
+      `<path d="${linePath}" fill="none" stroke="var(--ink)" stroke-width="1.5"/>` +
+      segs.map(s => {
+        const x = sx((s.from+s.to)/2);
+        const y = sy(s.speed);
+        return `<circle cx="${x}" cy="${y}" r="3" fill="var(--bg)" stroke="var(--ink)" stroke-width="1.5"/>`;
+      }).join('');
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>
