@@ -20,6 +20,7 @@
     --accent: #d4ff4a;
     --accent-warm: #ff9a3c;
     --accent-cool: #5ac8e8;
+    --accent-green: #228B22;
     --danger: #ff5a52;
   }
 
@@ -77,6 +78,9 @@
   .overlay-br { bottom: 16px; right: 16px; text-align: right; }
   .overlay-bl { bottom: 16px; left: 16px; right: 16px; }
 
+  .split-row .seg {color: var(--accent-green);}
+  .split-row .strokerate {color: var(--accent-warm);}
+
   .read-speed { font-family: 'Fraunces', serif; font-weight: 300; font-size: 64px; line-height: 1; color: var(--ink); letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
   .read-speed .unit { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-dim); display: block; margin-top: 4px; }
   .read-time { font-family: 'JetBrains Mono', monospace; font-size: 32px; font-weight: 300; color: var(--accent); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
@@ -98,10 +102,12 @@
   .scrub-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--ink-faint); letter-spacing: 0.1em; font-variant-numeric: tabular-nums; }
 
   .tape-wrap { position: relative; height: 24px; margin-top: 8px; background: var(--surface-2); }
+  .tape-green { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent-green); }
   .tape-mark { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent-cool); }
   .tape-mark::after { content: attr(data-m); position: absolute; top: -14px; left: 50%; transform: translateX(-50%); font-size: 9px; color: var(--accent-cool); white-space: nowrap; }
   .tape-mark.start { background: var(--accent); }
   .tape-mark.start::after { color: var(--accent); content: 'START'; }
+  .tape-mark.green { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent-green); }
 
   .playbar { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
   .play-btn { width: 44px; height: 44px; background: var(--accent); color: var(--bg); border: none; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 16px; display: flex; align-items: center; justify-content: center; }
@@ -180,7 +186,21 @@
   </header>
 
   <div class="stage">
+
     <div class="video-panel">
+      <div class="card">
+        <div class="card-hd"><h3>How to use</h3><span class="num">01</span></div>
+        <div class="card-body">
+          <div class="instruction">
+            <b>1.</b> Load a video. Choose length + start mode.<br>
+            <b>2.</b> Scrub to the start frame, tap <b>MARK START</b>.<br>
+            <b>3.</b> Scrub to each checkpoint as the <b>head crosses</b> it (15m flag, T-mark, 35m flag, wall), tap <b>MARK</b>.<br>
+            <b>4.</b> <b>Optional:</b> Play the clip through (slow if needed) and tap <b>S</b> each time an arm enters the water. SR, DPS, and Stroke Index compute automatically per segment.<br><br>
+            <span style="color: var(--ink-faint);">Shortcuts: <kbd>M</kbd> mark · <kbd>S</kbd> stroke · <kbd>R</kbd> strokeRate · <kbd>Space</kbd> play · <kbd>←</kbd> <kbd>→</kbd> frame · <kbd>Z</kbd> undo mark · <kbd>X</kbd> undo stroke</span>
+          </div>
+        </div>
+      </div>
+
       <div class="video-frame empty" id="videoFrame">
         <div class="icon">+</div>
         <div class="label">Load Video</div>
@@ -212,19 +232,6 @@
     </div>
 
     <div class="side">
-      <div class="card">
-        <div class="card-hd"><h3>How to use</h3><span class="num">01</span></div>
-        <div class="card-body">
-          <div class="instruction">
-            <b>1.</b> Load a video. Choose length + start mode.<br>
-            <b>2.</b> Scrub to the start frame, tap <b>MARK START</b>.<br>
-            <b>3.</b> Scrub to each checkpoint as the <b>head crosses</b> it (15m flag, T-mark, 35m flag, wall), tap <b>MARK</b>.<br>
-            <b>4.</b> <b>Optional:</b> Play the clip through (slow if needed) and tap <b>S</b> each time an arm enters the water. SR, DPS, and Stroke Index compute automatically per segment.<br><br>
-            <span style="color: var(--ink-faint);">Shortcuts: <kbd>M</kbd> mark · <kbd>S</kbd> stroke · <kbd>Space</kbd> play · <kbd>←</kbd> <kbd>→</kbd> frame · <kbd>Z</kbd> undo mark · <kbd>X</kbd> undo stroke</span>
-          </div>
-        </div>
-      </div>
-
       <div class="card">
         <div class="card-hd"><h3>Length</h3><span class="num">02</span></div>
         <div class="card-body">
@@ -280,7 +287,22 @@
       </div>
 
       <div class="card">
-        <div class="card-hd"><h3>Actions</h3><span class="num">05</span></div>
+        <div class="card-hd"><h3>Stroke Rate</h3><span class="num">05</span></div>
+        <div class="card-body">
+          <button class="mark-btn stroke-rate-btn" id="strokeRateBtn" disabled style="background: var(--accent-green);">
+            LOG STROKE RATE
+            <span class="sub">Start of 3 Cycles · shortcut: R</span>
+          </button>
+          <div style="display: flex; gap: 6px; margin-top: 10px;">
+            <button class="action" id="undoStrokeRateBtn" style="flex:1;">Undo stroke rate</button>
+            <button class="action" id="clearStrokeRateBtn" style="flex:1;">Clear all</button>
+          </div>
+          <div id="strokeRateCount" style="font-size: 10px; color: var(--ink-faint); letter-spacing: 0.1em; text-transform: uppercase; margin-top: 10px; text-align: center;">0 stroke rate logged</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd"><h3>Actions</h3><span class="num">06</span></div>
         <div class="card-body">
           <div class="actions">
             <button class="action" id="undoBtn">Undo last</button>
@@ -290,12 +312,20 @@
         </div>
       </div>
     </div>
+
   </div>
 
   <div class="card" style="margin-top: 24px;">
-    <div class="card-hd"><h3>Splits</h3><span class="num">06</span></div>
+    <div class="card-hd"><h3>Splits</h3><span class="num">07</span></div>
     <div class="card-body" style="padding: 0;">
       <div class="split-grid" id="splitGrid"></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top: 24px;">
+    <div class="card-hd"><h3>Stroke Rate</h3><span class="num">08</span></div>
+    <div class="card-body" style="padding: 0;">
+      <div class="split-grid" id="strokeRateGrid"></div>
     </div>
   </div>
 
@@ -327,6 +357,7 @@
     startMode: 'beep',    // 'beep' or 'feet'
     splits: [],           // { distance, videoTime } — 0 is start, then 15/25/35/50
     strokes: [],          // array of videoTime values, one per arm entry
+    strokeRate: [],       // array of start and end stroke rate
     lengthM: 50,
     checkpoints: CHECKPOINTS_50,
     playing: false,
@@ -419,6 +450,7 @@
       playBtn.disabled = false;
       markBtn.disabled = false;
       strokeBtn.disabled = false;
+      strokeRateBtn.disabled = false;
       frameBack.disabled = false;
       frameFwd.disabled = false;
       statusLine.textContent = 'Video loaded — mark start';
@@ -538,6 +570,40 @@
     render();
   });
 
+  // ---- stroke rate logic ----
+  const strokeRateBtn = $('strokeRateBtn');
+  const undoStrokeRateBtn = $('undoStrokeRateBtn');
+  const clearStrokeRateBtn = $('clearStrokeRateBtn');
+  const strokeRateCount = $('strokeRateCount');
+
+  strokeRateBtn.addEventListener('click', logStrokeRate);
+  undoStrokeRateBtn.addEventListener('click', () => {
+    if (state.strokeRate.length === 0) return;
+    state.strokeRate.pop();
+    render();
+  });
+  clearStrokeRateBtn.addEventListener('click', () => {
+    if (state.strokeRate.length === 0) return;
+    if (!confirm(`Clear all ${state.strokeRate.length} logged strokes?`)) return;
+    state.strokeRate = [];
+    render();
+  });
+
+  function logStrokeRate() {
+    if (!video) return;
+    const t = video.currentTime;
+    // prevent duplicate logs within 0.1s (rapid double-tap)
+    if (state.strokes.length > 0 && Math.abs(t - state.strokes[state.strokes.length-1]) < 0.1) {
+      showToast('Too close to last stroke');
+      return;
+    }
+    state.strokeRate.push(t);
+    state.strokeRate.sort((a,b) => a - b);
+    render();
+  }
+
+  //---------------------------------------------
+
   function logStroke() {
     if (!video) return;
     const t = video.currentTime;
@@ -630,6 +696,7 @@
     else if (e.code === 'ArrowRight') { e.preventDefault(); frameFwd.click(); }
     else if (e.key.toLowerCase() === 'm') { e.preventDefault(); doMark(); }
     else if (e.key.toLowerCase() === 's') { e.preventDefault(); logStroke(); }
+    else if (e.key.toLowerCase() === 'r') { e.preventDefault(); logStrokeRate(); }
     else if (e.key.toLowerCase() === 'z') { e.preventDefault(); undoBtn.click(); }
     else if (e.key.toLowerCase() === 'x') { e.preventDefault(); undoStrokeBtn.click(); }
   });
@@ -667,6 +734,33 @@
       });
     }
     return segs;
+  }
+
+  // ---- stroke rate logic ----
+  function computeStrokeRate() {
+    const strokeRate = [];
+    for (let i=0; i<state.strokeRate.length; i++) {
+      console.log('computeStrokeRate');
+      //Only process the even items in the array
+      if (i % 2 !== 0) {
+        const prev = state.strokeRate[i-1];
+        const cur = state.strokeRate[i];
+        const dt = (cur - prev).toFixed(2);  // Delta Time
+        const sr = ((3 / dt) * 60).toFixed(1);
+        const seg = 'SR' + (i - 1) + ' - SR' + i;
+
+        console.log('Seg:', seg);
+        console.log('Delta:', dt);
+        console.log('SR:', sr);
+
+        strokeRate.push({
+                  seg: seg,
+                  dt: dt,
+                  sr: sr
+        });
+      }
+    }
+    return strokeRate;
   }
 
   // Current "live" speed for overlay — interpolated / held based on current video time
@@ -792,6 +886,18 @@
       statusLine.textContent = `Mark start (${state.startMode === 'beep' ? 'beep' : 'feet-off'})`;
     }
 
+    //Stroke Rate Table
+    const strokeRates = computeStrokeRate();
+    const srRows = [];
+    srRows.push(`<div class="split-row head">
+      <div>Segment</div>
+      <div>Strokes</div>
+      <div>Time</div>
+      <div>Stroke Rate</div>
+      <div></div>
+      <div></div>
+    </div>`);
+
     // split table
     const segs = computeSegments();
     const rows = [];
@@ -908,6 +1014,21 @@
 
     splitGrid.innerHTML = rows.join('');
 
+    for (let i=0; i< strokeRates.length; i++) {
+      const strokeRate = strokeRates[i];
+
+      srRows.push(`<div class="split-row">
+        <div class="seg">${strokeRate.seg}</div>
+        <div>3 Strokes</div>
+        <div>${strokeRate.dt}secs</div>
+        <div class="strokerate">${strokeRate.sr}</div>
+        <div></div>
+        <div></div>
+      </div>`);
+    }
+
+    strokeRateGrid.innerHTML = srRows.join('');
+
     // tape marks
     tapeWrap.innerHTML = '';
     if (state.duration > 0) {
@@ -917,6 +1038,18 @@
         el.style.cssText = `position:absolute; top:30%; bottom:30%; width:1px; background:var(--accent-cool); opacity:0.5; left:${(t / state.duration) * 100}%;`;
         tapeWrap.appendChild(el);
       });
+
+      // Stroke Rate Marks (thin green colour)
+      let srCount = 0;
+      state.strokeRate.forEach((t) => {
+        const el = document.createElement('div');
+        el.className = 'tape-mark';//.green
+        el.style.cssText = `position:absolute; width:1px; background:var(--accent-green); left:${(t / state.duration) * 100}%;`;
+        el.dataset.m = 'SR' + srCount;
+        srCount = srCount + 1;
+        tapeWrap.appendChild(el);
+      });
+
       // Split marks
       state.splits.forEach((s) => {
         const el = document.createElement('div');
@@ -931,6 +1064,11 @@
     if (strokeCount) {
       const n = state.strokes.length;
       strokeCount.textContent = n === 0 ? '0 strokes logged' : `${n} strokes logged · ${(n/2).toFixed(1)} cycles`;
+    }
+
+    if (strokeRateCount) {
+       const n = strokeRates.length;
+       strokeRateCount.textContent = n === 0 ? '0 strokes rate logged' : `${n} stroke rate logged`;
     }
 
     // main chart
